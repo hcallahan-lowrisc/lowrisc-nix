@@ -47,7 +47,10 @@
         ];
       };
       lowrisc_pkgs = import ./pkgs {inherit pkgs inputs;};
-    in {
+      opentitan = pkgs.callPackage ./dev/opentitan.nix {
+        inherit (self.packages.${system}) ncurses5-fhs bazel_ot verilator_ot python_ot verible_ot;
+      };
+    in rec {
       checks = {
         license = pkgs.stdenv.mkDerivation {
           name = "license-check";
@@ -63,11 +66,12 @@
           '';
         };
       };
-      packages = flake-utils.lib.filterPackages system lowrisc_pkgs;
+      packages = nixpkgs.lib.attrsets.mergeAttrsList [
+        (flake-utils.lib.filterPackages system lowrisc_pkgs)
+        {inherit opentitan;}
+      ];
       devShells = {
-        opentitan = pkgs.callPackage ./dev/opentitan.nix {
-          inherit (lowrisc_pkgs) ncurses5-fhs bazel_ot verilator_ot python_ot verible_ot;
-        };
+        opentitan = opentitan.env;
         cheriot = pkgs.mkShell {
           name = "cheriot";
           packages =

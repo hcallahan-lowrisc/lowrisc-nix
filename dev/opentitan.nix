@@ -31,7 +31,7 @@
     '';
   };
 in
-  (pkgs.buildFHSEnv {
+  pkgs.lib.makeOverridable pkgs.buildFHSEnv {
     name = "opentitan";
     targetPkgs = _:
       with pkgs;
@@ -92,5 +92,4 @@ in
     ];
 
     runScript = "\${SHELL:-bash}";
-  })
-  .env
+  }
