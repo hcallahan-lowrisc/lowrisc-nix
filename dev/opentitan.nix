@@ -31,7 +31,7 @@
     '';
   };
 in
-  (pkgs.buildFHSEnvOverlay {
+  pkgs.buildFHSEnvOverlay {
     pname = "opentitan";
     version = "dev";
     targetPkgs = _:
@@ -92,5 +92,4 @@ in
     '';
 
     runScript = "\${SHELL:-bash}";
-  })
-  .env
+  }
