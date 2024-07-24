@@ -10,40 +10,41 @@
   git,
   darwin,
 }: let
-  # Source dependencies of cheriot-audit
-  regocpp = fetchFromGitHub {
+
+  regocpp.src = fetchFromGitHub {
     owner = "microsoft";
     repo = "rego-cpp";
     rev = "cb967637dbf7cee25117203bbdf9c10b62dfb25a";
     hash = "sha256-0JLnk+qr991aKWjzTrG4JE0L5e2NrcOstT8+ggjzKr0=";
   };
-  nlohmann_json = builtins.fetchTarball {
+
+  nlohmann_json.src = builtins.fetchTarball {
     url = "https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz";
     sha256 = "078fymbb5jzhg69bvwp1fr79rmcyy1nz7cjnwkisgkjpb24rywbj";
   };
 
-  # Source dependencies of rego-cpp
-  trieste = fetchFromGitHub {
+  trieste.src = fetchFromGitHub {
     owner = "microsoft";
     repo = "trieste";
     rev = "58a6eeeaeda4f5c96dad30c23b2d4e3feae7a60c";
     hash = "sha256-uCyJiNRG6R/tyhewQR4hTrO+CnEVpZmFubZMMH6mAwg=";
   };
 
-  # Source dependencies of trieste
-  snmalloc = fetchFromGitHub {
+  snmalloc.src = fetchFromGitHub {
     owner = "microsoft";
     repo = "snmalloc";
     rev = "846a926155976b07a16425352dd5fed0858c5c97";
     hash = "sha256-Dc8CKaYPPAYfY83Nsv+KqDJoihK8zXrRacVLugWzJY4=";
   };
-  re2 = fetchFromGitHub {
+
+  re2.src = fetchFromGitHub {
     owner = "google";
     repo = "re2";
     rev = "2022-12-01";
     hash = "sha256-RmPXfavSKVnnl/RJ5aTjc/GbkPz+EXiFg1n5e4s6wjw=";
   };
-  cli11 = fetchFromGitHub {
+
+  cli11.src = fetchFromGitHub {
     owner = "CLIUtils";
     repo = "CLI11";
     rev = "b9be5b9444772324459989177108a6a65b8b2769";
@@ -67,13 +68,13 @@ in
     };
 
     nativeBuildInputs = [cmake git];
-    cmakeFlags = [
-      "-DFETCHCONTENT_SOURCE_DIR_REGOCPP=${regocpp}"
-      "-DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=${nlohmann_json}"
-      "-DFETCHCONTENT_SOURCE_DIR_TRIESTE=${trieste}"
-      "-DFETCHCONTENT_SOURCE_DIR_SNMALLOC=${snmalloc}"
-      "-DFETCHCONTENT_SOURCE_DIR_RE2=${re2}"
-      "-DFETCHCONTENT_SOURCE_DIR_CLI11=${cli11}"
+    cmakeFlags = with lib; [
+      (cmakeFeature "FETCHCONTENT_SOURCE_DIR_REGOCPP" "${regocpp.src}")
+      (cmakeFeature "FETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON" "${nlohmann_json.src}")
+      (cmakeFeature "FETCHCONTENT_SOURCE_DIR_TRIESTE" "${trieste.src}")
+      (cmakeFeature "FETCHCONTENT_SOURCE_DIR_SNMALLOC" "${snmalloc.src}")
+      (cmakeFeature "FETCHCONTENT_SOURCE_DIR_RE2" "${re2.src}")
+      (cmakeFeature "FETCHCONTENT_SOURCE_DIR_CLI11" "${cli11.src}")
     ];
 
     installPhase = ''
