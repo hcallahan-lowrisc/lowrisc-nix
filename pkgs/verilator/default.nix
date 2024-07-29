@@ -2,7 +2,7 @@
 # Licensed under the MIT License, see LICENSE for details.
 # SPDX-License-Identifier: MIT
 {pkgs, ...}:
-pkgs.verilator.overrideAttrs rec {
+pkgs.verilator.overrideAttrs (prev: rec {
   version = "4.210";
   src = pkgs.fetchFromGitHub {
     owner = "verilator";
@@ -11,5 +11,6 @@ pkgs.verilator.overrideAttrs rec {
     sha256 = "sha256-evOV+mo+9VfKAEUSZJRT0O3AIVRS8GO4408vDxVmjrU=";
   };
   patches = [./fix.patch];
+  buildInputs = prev.buildInputs ++ [ pkgs.zlib ];
   doCheck = false;
-}
+})
