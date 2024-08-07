@@ -91,5 +91,5 @@ in
       "--symlink /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem"
     ];
 
-    runScript = "\${SHELL:-bash}";
+    runScript = "bash";
   }
