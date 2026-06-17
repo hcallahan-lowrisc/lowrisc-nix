@@ -231,30 +231,79 @@ in
       passthru
       // {
         env =
-          runCommandLocal name {
-            shellHook = ''
-              # Detect the parent shell. New versions of nix will set SHELL variable to non-interactive bash so we need to detect
-              # using other mechanism.
-              parent_shell=$(${coreutils}/bin/readlink /proc/$PPID/exe)
-              case "$parent_shell" in
-                # If the parent shell is one of the recognised shells
-                *bash | *fish | *zsh)
-                  export SHELL="$parent_shell"
-                  ;;
+          (runCommandLocal name {
+              shellHook = ''
+                # Detect the parent shell. New versions of nix will set SHELL variable to non-interactive bash so we need to detect
+                # using other mechanism.
+                parent_shell=$(${coreutils}/bin/readlink /proc/$PPID/exe)
+                case "$parent_shell" in
+                  # If the parent shell is one of the recognised shells
+                  *bash | *fish | *zsh)
+                    export SHELL="$parent_shell"
+                    ;;
 
-                # If we cannot recognise, then unset it to avoid using the non-interactive bash.
-                *)
-                  unset SHELL
-                  ;;
-              esac
-              exec ${bin}
-            '';
-          } ''
-            echo >&2 ""
-            echo >&2 "*** buildFHSEnvOverlay 'env' attributes are intended for interactive nix-shell sessions, not for building! ***"
-            echo >&2 ""
-            exit 1
-          '';
+                  # If we cannot recognise, then unset it to avoid using the non-interactive bash.
+                  *)
+                    unset SHELL
+                    ;;
+                esac
+                exec ${bin}
+              '';
+            } ''
+              echo >&2 ""
+              echo >&2 "*** buildFHSEnvOverlay 'env' attributes are intended for interactive nix-shell sessions, not for building! ***"
+              echo >&2 ""
+              exit 1
+            '')
+          // {
+            # Parallel env built with upstream nixpkgs `buildFHSEnv` instead of
+            # the overlay sandbox, exposed unconditionally so any consumer can
+            # opt into a hermetic comparison shell via `.env.hermetic` (i.e.
+            # `nix develop .#<name>.hermetic` when the consumer returns `.env`).
+            #
+            # `preExecHook` is overlay-only (upstream `buildFHSEnv` does not
+            # recognise it). To keep the consumer-facing API identical, its
+            # contents are appended to `profile` for the hermetic env so any
+            # portable setup (e.g. /etc/ssl symlinks) still runs. Setup that
+            # relies on mount-namespace privileges (the `tmpfs`/`bind` helpers
+            # only available in `preExecHook`) will silently no-op in the
+            # hermetic shell — those flows need to be tested in the overlay env.
+            hermetic = (
+              (buildFHSEnv (
+                (removeAttrs args ["preExecHook"])
+                // {
+                  profile =
+                    (args.profile or "")
+                    + optionalString (args ? preExecHook) ''
+
+                      # Appended from `preExecHook` by buildFHSEnvOverlay so the
+                      # hermetic env runs the same portable setup as the overlay env.
+                      ${args.preExecHook}
+                    '';
+                }
+              )).env.overrideAttrs (old: {
+                # Recover the user's real interactive shell so `runScript`
+                # (which expands `$SHELL`) does not exec the non-interactive
+                # bash that `nix develop` injects. Without this, readline
+                # builtins like `bind` and `shopt -s progcomp` fail when
+                # bashrc files run inside the env. Matches the SHELL handling
+                # the overlay env does in its own shellHook.
+                shellHook =
+                  ''
+                    parent_shell=$(${coreutils}/bin/readlink /proc/$PPID/exe)
+                    case "$parent_shell" in
+                      *bash | *fish | *zsh)
+                        export SHELL="$parent_shell"
+                        ;;
+                      *)
+                        unset SHELL
+                        ;;
+                    esac
+                  ''
+                  + (old.shellHook or "");
+              })
+            );
+          };
         inherit args fhsenv;
       };
   } ''
