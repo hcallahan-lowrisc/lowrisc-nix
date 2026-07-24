@@ -278,6 +278,45 @@
     fi
   '';
 
+  # Parent-shell detection. Runs *outside* bwrap (in the nix develop shellHook
+  # or the `apps.<name>` launcher) — inside the sandbox `$PPID` refers to the
+  # FHS init, not the invoking terminal, so this must happen before exec'ing
+  # the FHS wrapper. Newer nix sets `$SHELL` to a non-interactive bash; we
+  # override it with the real parent (bash/fish/zsh) so the dispatcher's
+  # no-args branch lands the user in their real interactive shell.
+  detectParentShell = ''
+    parent_shell=$(${pkgs.coreutils}/bin/readlink /proc/$PPID/exe)
+    case "$parent_shell" in
+      *bash | *fish | *zsh)
+        export SHELL="$parent_shell"
+        ;;
+      *)
+        unset SHELL
+        ;;
+    esac
+  '';
+
+  # Outside-bwrap launcher shared by both entry points (`nix develop`'s
+  # shellHook and the `apps.<name>` payload). Argv is forwarded through, so
+  # `nix run .# -- cmd arg1 arg2` reaches `exec "$@"` inside the dispatcher.
+  launcher = pkgs.writeShellScript "${name}-launcher" ''
+    ${detectParentShell}
+    exec ${lib.getExe fhs} "$@"
+  '';
+
+  # Dispatcher used as the FHS `runScript`. With no args, drops into the
+  # user's interactive `$SHELL` (unchanged `nix develop` UX). With args, execs
+  # them as argv inside the sandbox — no `bash -c` string, so quoting/globs/
+  # env-var expansion happen exactly as the caller intended. This is what
+  # makes `nix run .#<app> -- cmd arg1 arg2` behave like a normal exec.
+  runDispatch = pkgs.writeShellScript "${name}-dispatch" ''
+    if [ $# -eq 0 ]; then
+      exec "''${SHELL:-bash}"
+    else
+      exec "$@"
+    fi
+  '';
+
   # The FHS sandbox itself: upstream nixpkgs buildFHSEnv (bubblewrap-based), for
   # a hermetic /usr assembled purely from Nix packages rather than overlaid on
   # top of the host's /usr.
@@ -287,7 +326,7 @@
     targetPkgs = _: edaFhsPackages ++ extraDeps ++ extraPkgs;
     extraOutputsToInstall = ["dev"];
     multiArch = true;
-    runScript = "\${SHELL:-bash}";
+    runScript = "${runDispatch}";
     profile = edaProfile + "\n" + profile;
     extraPreBwrapCmds = edaBwrapBinds;
     # Spliced verbatim into the bwrap command *after* the host auto-mounts (e.g.
@@ -296,24 +335,25 @@
     extraBwrapArgs = [''"''${eda_binds[@]}"''];
   };
 in
-  # Thin interactive-shell wrapper. Upstream's own `.env` execs the sandbox with
-  # whatever `$SHELL` it inherits, but newer nix sets `$SHELL` to a
-  # non-interactive bash. Detect the real parent shell first (as the old
-  # buildFHSEnvOverlay `.env` did) so `nix develop` lands in the user's fish/zsh
-  # /bash, then hand off to the upstream FHS launcher.
+  # Wrapper derivation exposed to consumers. The builder itself just aborts —
+  # this exists to carry the `shellHook` (for `nix develop`) and the
+  # `passthru.app` payload (for `nix run`); it is not meant to be realised.
   pkgs.runCommandLocal "${name}" {
     shellHook = ''
-      parent_shell=$(${pkgs.coreutils}/bin/readlink /proc/$PPID/exe)
-      case "$parent_shell" in
-        *bash | *fish | *zsh)
-          export SHELL="$parent_shell"
-          ;;
-        *)
-          unset SHELL
-          ;;
-      esac
-      exec ${lib.getExe fhs}
+      exec ${launcher}
     '';
+    passthru = {
+      # Flake apps payload: run this shell non-interactively. Use as:
+      #   apps.<myapp> = (mkEdaShell { ... }).app;
+      # then `nix run .# -- cmd arg1 arg2` execs `cmd arg1 arg2` inside the
+      # sandbox with the EDA env fully set up (profile still runs before the
+      # dispatcher). With no args after `--` you get the interactive `$SHELL`,
+      # matching `nix develop`.
+      app = {
+        type = "app";
+        program = "${launcher}";
+      };
+    };
   } ''
     echo >&2 ""
     echo >&2 "*** mkEdaShell environments are intended for interactive nix develop / nix-shell sessions, not for building! ***"
